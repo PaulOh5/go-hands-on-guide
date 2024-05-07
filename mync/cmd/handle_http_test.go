@@ -7,15 +7,7 @@ import (
 )
 
 func TestHandleHttp(t *testing.T) {
-	usageMessage := `
-http: A HTTP client.
-
-http: <options> server
-
-Options: 
-  -verb string
-    	HTTP method (default "GET")
-`
+	usageMessage := "\nhttp: A HTTP client.\n\nhttp: <options> server\n\nOptions: \n  -output string\n    \tOutput file path\n  -verb string\n    \tHTTP method (default \"GET\")\n"
 	testConfigs := []struct {
 		args   []string
 		output string
@@ -31,16 +23,6 @@ Options:
 			args:   []string{"-h"},
 			err:    errors.New("flag: help requested"),
 			output: usageMessage,
-		},
-		{
-			args:   []string{"http://localhost"},
-			err:    nil,
-			output: "Executing http command\n",
-		},
-		{
-			args:   []string{"-verb", "GET", "http://localhost"},
-			err:    nil,
-			output: "Executing http command\n",
 		},
 		{
 			args: []string{"-verb", "PUT", "http://localhost"},

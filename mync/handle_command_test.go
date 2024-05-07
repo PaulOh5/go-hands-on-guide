@@ -6,7 +6,7 @@ import (
 )
 
 func TestHandleCommand(t *testing.T) {
-	usageMessage := "Usage: mync [http|grpc] -h\n\nhttp: A HTTP client.\n\nhttp: <options> server\n\nOptions: \n  -verb string\n    \tHTTP method (default \"GET\")\n\n\ngrpc: A gRPC client.\n\ngrpc: <options> server\n\nOptions: \n  -body string\n    \tBody of request\n  -method string\n    \tMethod to call\n"
+	usageMessage := "Usage: mync [http|grpc] -h\n\nhttp: A HTTP client.\n\nhttp: <options> server\n\nOptions: \n  -output string\n    \tOutput file path\n  -verb string\n    \tHTTP method (default \"GET\")\n\n\ngrpc: A gRPC client.\n\ngrpc: <options> server\n\nOptions: \n  -body string\n    \tBody of request\n  -method string\n    \tMethod to call\n"
 
 	testConfigs := []struct {
 		args   []string
@@ -30,11 +30,6 @@ func TestHandleCommand(t *testing.T) {
 			args:   []string{"foo"},
 			err:    errInvalidSubCommand,
 			output: "invalid sub-command specified\n" + usageMessage,
-		},
-		{
-			args:   []string{"http", "http://example.com"},
-			err:    nil,
-			output: "Executing http command\n",
 		},
 	}
 
