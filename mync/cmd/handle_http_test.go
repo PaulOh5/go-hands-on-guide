@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -41,8 +42,41 @@ func packageRegHTTPHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func packageDataRegHTTPHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "POST" {
+		d := pkgRegisterResult{}
+		err := r.ParseMultipartForm(5000)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		mForm := r.MultipartForm
+		f := mForm.File["filedata"][0]
+		d.Id = fmt.Sprintf(
+			"%s-%s", mForm.Value["name"][0], mForm.Value["version"][0],
+		)
+		d.Name = f.Filename
+		d.Size = f.Size
+		jsonData, err := json.Marshal(d)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, string(jsonData))
+	} else {
+		http.Error(w, "Invalid HTTP method specified", http.StatusMethodNotAllowed)
+		return
+	}
+}
+
 func StartTestPackageServer() *httptest.Server {
 	ts := httptest.NewServer(http.HandlerFunc(packageRegHTTPHandler))
+	return ts
+}
+
+func StartTestPackageDataServer() *httptest.Server {
+	ts := httptest.NewServer(http.HandlerFunc(packageDataRegHTTPHandler))
 	return ts
 }
 
@@ -126,6 +160,44 @@ func TestPostMethodWithFile(t *testing.T) {
 	}
 	gotOutput := byteBuf.String()
 	expectedOutput := "Package registered with id: test-1.0\n"
+	if expectedOutput != gotOutput {
+		t.Errorf("Expected output %q, but got %q", expectedOutput, gotOutput)
+	}
+}
+
+func TestPostMethodWithFormData(t *testing.T) {
+	ts := StartTestPackageDataServer()
+	defer ts.Close()
+	tmpFile, err := os.CreateTemp("", "testfile")
+	if err != nil {
+		t.Fatalf("Failed to create temporary file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+	_, err = tmpFile.WriteString("some data")
+	if err != nil {
+		t.Fatalf("Failed to write to temporary file: %v", err)
+	}
+	args := []string{
+		"-verb",
+		"POST",
+		"-upload",
+		tmpFile.Name(),
+		"-formdata",
+		"name=test",
+		"-formdata",
+		"version=1.0",
+		ts.URL,
+	}
+	byteBuf := new(bytes.Buffer)
+	err = HandleHttp(byteBuf, args)
+	if err != nil {
+		t.Fatalf("Expected nil error, but got %v", err)
+	}
+	gotOutput := byteBuf.String()
+	expectedOutput := "Package registered with id: test-1.0\n"
+	fileName := strings.Split(tmpFile.Name(), "/")
+	expectedOutput += fmt.Sprintf("Filename: %s\n", fileName[len(fileName)-1])
+	expectedOutput += "Size: 9\n"
 	if expectedOutput != gotOutput {
 		t.Errorf("Expected output %q, but got %q", expectedOutput, gotOutput)
 	}
