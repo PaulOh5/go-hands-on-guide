@@ -2,114 +2,52 @@ package cmd
 
 import (
 	"bytes"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
 )
 
-func packageRegHTTPHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method == "POST" {
-		p := pkgData{}
-		d := pkgRegisterResult{}
-		defer r.Body.Close()
-		data, err := io.ReadAll(r.Body)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		err = json.Unmarshal(data, &p)
-		if err != nil || len(p.Name) == 0 || len(p.Version) == 0 {
-			http.Error(w, "Bad Request", http.StatusBadRequest)
-			return
-		}
-		d.Id = p.Name + "-" + p.Version
-		jsonData, err := json.Marshal(d)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, string(jsonData))
-	} else {
-		http.Error(w, "Invalid HTTP method specified", http.StatusMethodNotAllowed)
-		return
-	}
-}
-
-func packageDataRegHTTPHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method == "POST" {
-		d := pkgRegisterResult{}
-		err := r.ParseMultipartForm(5000)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		mForm := r.MultipartForm
-		f := mForm.File["filedata"][0]
-		d.Id = fmt.Sprintf(
-			"%s-%s", mForm.Value["name"][0], mForm.Value["version"][0],
-		)
-		d.Name = f.Filename
-		d.Size = f.Size
-		jsonData, err := json.Marshal(d)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, string(jsonData))
-	} else {
-		http.Error(w, "Invalid HTTP method specified", http.StatusMethodNotAllowed)
-		return
-	}
-}
-
-func StartTestPackageServer() *httptest.Server {
-	ts := httptest.NewServer(http.HandlerFunc(packageRegHTTPHandler))
-	return ts
-}
-
-func StartTestPackageDataServer() *httptest.Server {
-	ts := httptest.NewServer(http.HandlerFunc(packageDataRegHTTPHandler))
-	return ts
-}
-
-func TestHandleHttp(t *testing.T) {
-	usageMessage := "\nhttp: A HTTP client.\n\nhttp: <options> server\n\nOptions: \n  -body string\n    \tBody of request (only json format string)\n  -bodyFilePath string\n    \tFile path of body of request (only json file)\n  -output string\n    \tOutput file path\n  -verb string\n    \tHTTP method (default \"GET\")\n"
+func TestHandleHttpError(t *testing.T) {
+	helperMessage := "\nFor direction of command, Run \"mync http -h\"\n"
 	testConfigs := []struct {
 		args   []string
-		output string
 		err    error
+		output string
 	}{
 		// 인수가 지정되지 않은 경우
 		{
-			args: []string{},
-			err:  ErrorNoServerSpecified,
+			args:   []string{},
+			err:    ErrorInvalidHttpMethod,
+			output: "invalid HTTP method" + helperMessage,
 		},
-		// 인수가 -h로 지정된 경우
+		// 지원되지 않은 HTTP Method
 		{
-			args:   []string{"-h"},
-			err:    errors.New("flag: help requested"),
-			output: usageMessage,
+			args:   []string{"put", "http://localhost"},
+			err:    ErrorInvalidHttpMethod,
+			output: "invalid HTTP method" + helperMessage,
 		},
+		// GET Method에서 URL이 없는 경우
 		{
-			args: []string{"-verb", "PUT", "http://localhost"},
-			err:  ErrorInvalidHttpMethod,
+			args:   []string{"get", "-output", "/tmp/test.txt"},
+			err:    ErrorNoServerSpecified,
+			output: "you have to specify the remote server" + helperMessage,
 		},
+		// POST Method에서 URL이 없는 경우
+		{
+			args:   []string{"post"},
+			err:    ErrorNoServerSpecified,
+			output: "you have to specify the remote server" + helperMessage,
+		},
+		// POST Option이 잘못된 경우
 	}
 
 	byteBuf := new(bytes.Buffer)
 
 	for _, tc := range testConfigs {
 		err := HandleHttp(byteBuf, tc.args)
-		if tc.err == nil && err != nil {
-			t.Fatalf("Expected nil error, but got %v", err)
+		if err == nil {
+			t.Fatal("Expected error, but got nil error")
 		}
 		if tc.err != nil && err.Error() != tc.err.Error() {
 			t.Fatalf("Expected error %v, but got %v", tc.err, err)
@@ -124,12 +62,55 @@ func TestHandleHttp(t *testing.T) {
 	}
 }
 
-func TestPostMethodWithString(t *testing.T) {
+func TestGetMethod(t *testing.T) {
 	ts := StartTestPackageServer()
 	defer ts.Close()
-	args := []string{"-verb", "POST", "-body", `{"name":"test","version":"1.0"}`, ts.URL}
+	args := []string{ts.URL}
 	byteBuf := new(bytes.Buffer)
-	err := HandleHttp(byteBuf, args)
+	err := HandleGetHttp(byteBuf, args)
+	if err != nil {
+		t.Fatalf("Expected nil error, but got %v", err)
+	}
+	gotOutput := byteBuf.String()
+	expectedOutput := "package1-0.1"
+	if expectedOutput != gotOutput {
+		t.Errorf("Expected output %q, but got %q", expectedOutput, gotOutput)
+	}
+}
+
+func TestGetMethodWithOutput(t *testing.T) {
+	ts := StartTestPackageServer()
+	defer ts.Close()
+
+	file, err := os.CreateTemp("", "test")
+	if err != nil {
+		t.Fatalf("Failed to create temporary file")
+	}
+	defer os.Remove(file.Name())
+
+	args := []string{"-output", file.Name(), ts.URL}
+	byteBuf := new(bytes.Buffer)
+	err = HandleGetHttp(byteBuf, args)
+	if err != nil {
+		t.Fatalf("Expected nil error, but got %v", err)
+	}
+	fileContent, err := os.ReadFile(file.Name())
+	if err != nil {
+		t.Fatalf("Failed to read temporary file")
+	}
+	gotOutput := string(fileContent)
+	expectedOutput := "package1-0.1"
+	if expectedOutput != gotOutput {
+		t.Errorf("Expected output %q, but got %q", expectedOutput, gotOutput)
+	}
+}
+
+func TestPostMethodWithStringBody(t *testing.T) {
+	ts := StartTestPackageServer()
+	defer ts.Close()
+	args := []string{"-body", `{"name":"test","version":"1.0"}`, ts.URL}
+	byteBuf := new(bytes.Buffer)
+	err := HandlePostHttp(byteBuf, args)
 	if err != nil {
 		t.Fatalf("Expected nil error, but got %v", err)
 	}
@@ -152,9 +133,9 @@ func TestPostMethodWithFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to write to temporary file: %v", err)
 	}
-	args := []string{"-verb", "POST", "-body-file", tmpFile.Name(), ts.URL}
+	args := []string{"-body-file", tmpFile.Name(), ts.URL}
 	byteBuf := new(bytes.Buffer)
-	err = HandleHttp(byteBuf, args)
+	err = HandlePostHttp(byteBuf, args)
 	if err != nil {
 		t.Fatalf("Expected nil error, but got %v", err)
 	}
@@ -166,7 +147,7 @@ func TestPostMethodWithFile(t *testing.T) {
 }
 
 func TestPostMethodWithFormData(t *testing.T) {
-	ts := StartTestPackageDataServer()
+	ts := StartTestPackageServer()
 	defer ts.Close()
 	tmpFile, err := os.CreateTemp("", "testfile")
 	if err != nil {
@@ -178,8 +159,6 @@ func TestPostMethodWithFormData(t *testing.T) {
 		t.Fatalf("Failed to write to temporary file: %v", err)
 	}
 	args := []string{
-		"-verb",
-		"POST",
 		"-upload",
 		tmpFile.Name(),
 		"-formdata",
@@ -189,7 +168,7 @@ func TestPostMethodWithFormData(t *testing.T) {
 		ts.URL,
 	}
 	byteBuf := new(bytes.Buffer)
-	err = HandleHttp(byteBuf, args)
+	err = HandlePostHttp(byteBuf, args)
 	if err != nil {
 		t.Fatalf("Expected nil error, but got %v", err)
 	}
