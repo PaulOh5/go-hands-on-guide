@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 )
@@ -19,6 +20,9 @@ func printUsage(w io.Writer) {
 
 func HandleHttp(w io.Writer, args []string) error {
 	var err error
+
+	fs := flag.NewFlagSet("HTTP command", flag.ContinueOnError)
+	fs.SetOutput(w)
 	if len(args) < 1 {
 		err = ErrorInvalidHttpMethod
 	} else {

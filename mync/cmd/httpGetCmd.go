@@ -1,24 +1,48 @@
 package cmd
 
 import (
+	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"strings"
 )
 
 type getConfig struct {
-	url    string
-	output string
+	url             string
+	output          string
+	disableRedirect bool
+	header          Header
+	auth            string
+}
+
+type Header map[string]string
+
+func (h *Header) Set(value string) error {
+	kv := strings.Split(value, "=")
+	(*h)[kv[0]] = kv[1]
+	return nil
+}
+
+func (h *Header) String() string {
+	return fmt.Sprint(*h)
 }
 
 func HandleGetHttp(w io.Writer, args []string) error {
 	var output string
+	var disableRedirect bool
+	var header Header
+	var auth string
 
 	fs := flag.NewFlagSet("HTTP GET Method", flag.ContinueOnError)
 	fs.SetOutput(w)
 	fs.StringVar(&output, "output", "", "Output file path")
+	fs.BoolVar(&disableRedirect, "disable-redirect", false, "Disable redirection")
+	fs.Var(&header, "header", "Header value (key=value)")
+	fs.StringVar(&auth, "basicauth", "", "Atuh value (user:password)")
 
 	fs.Usage = func() {
 		var usageString = `
@@ -41,17 +65,38 @@ http get: <options> server`
 		return ErrorNoServerSpecified
 	}
 
-	c := getConfig{output: output}
+	c := getConfig{
+		output:          output,
+		disableRedirect: disableRedirect,
+		header:          header,
+		auth:            auth,
+	}
 	c.url = fs.Arg(0)
-	err = fetchRemoteResource(w, c)
+	httpClient := createHTTPClient(c)
+	err = fetchRemoteResource(w, httpClient, c)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func fetchRemoteResource(w io.Writer, config getConfig) error {
-	r, err := http.Get(config.url)
+func createHTTPClient(config getConfig) *http.Client {
+	if config.disableRedirect {
+		return &http.Client{CheckRedirect: redirectPolicyFunc}
+	} else {
+		return &http.Client{}
+	}
+}
+
+func redirectPolicyFunc(req *http.Request, via []*http.Request) error {
+	if len(via) >= 1 {
+		return errors.New("stopped after 1 redirect")
+	}
+	return nil
+}
+
+func fetchRemoteResource(w io.Writer, client *http.Client, config getConfig) error {
+	r, err := client.Get(config.url)
 	if err != nil {
 		return err
 	}
@@ -83,4 +128,20 @@ func createFile(data, path string) error {
 		return err
 	}
 	return nil
+}
+
+// 여기서부터 시작
+func createHTTPGetRequest(
+	ctx context.Context,
+	url string,
+	headers map[string]string,
+) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	for k, v := range headers {
+		req.Header.Add(k, v)
+	}
+	return req, err
 }
