@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 )
 
 type getConfig struct {
@@ -73,7 +74,13 @@ http get: <options> server`
 	}
 	c.url = fs.Arg(0)
 	httpClient := createHTTPClient(c)
-	err = fetchRemoteResource(w, httpClient, c)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Millisecond)
+	defer cancel()
+	request, err := createHTTPGetRequest(ctx, c)
+	if err != nil {
+		return err
+	}
+	err = fetchRemoteResource(w, httpClient, request, c)
 	if err != nil {
 		return err
 	}
@@ -95,8 +102,8 @@ func redirectPolicyFunc(req *http.Request, via []*http.Request) error {
 	return nil
 }
 
-func fetchRemoteResource(w io.Writer, client *http.Client, config getConfig) error {
-	r, err := client.Get(config.url)
+func fetchRemoteResource(w io.Writer, client *http.Client, request *http.Request, config getConfig) error {
+	r, err := client.Do(request)
 	if err != nil {
 		return err
 	}
@@ -130,18 +137,23 @@ func createFile(data, path string) error {
 	return nil
 }
 
-// 여기서부터 시작
-func createHTTPGetRequest(
-	ctx context.Context,
-	url string,
-	headers map[string]string,
-) (*http.Request, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+func createHTTPGetRequest(ctx context.Context, config getConfig) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", config.url, nil)
 	if err != nil {
 		return nil, err
 	}
-	for k, v := range headers {
+	for k, v := range config.header {
 		req.Header.Add(k, v)
 	}
+
+	authParts := strings.Split(config.auth, ":")
+	if len(authParts) == 2 {
+		username := authParts[0]
+		password := authParts[1]
+		req.SetBasicAuth(username, password)
+	} else {
+		return nil, errors.New("invalid auth string. auth string must be a \"username:password\"")
+	}
+
 	return req, err
 }
