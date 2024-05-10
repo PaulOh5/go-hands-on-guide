@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -16,8 +17,10 @@ type getConfig struct {
 	url             string
 	output          string
 	disableRedirect bool
+	timeout         int
 	header          Header
 	auth            string
+	report          bool
 }
 
 type Header map[string]string
@@ -32,18 +35,34 @@ func (h *Header) String() string {
 	return fmt.Sprint(*h)
 }
 
+type ReportClient struct {
+	log *log.Logger
+}
+
+func (c ReportClient) RoundTrip(r *http.Request) (*http.Response, error) {
+	startTime := time.Now()
+	resp, err := http.DefaultTransport.RoundTrip(r)
+	elapsedTime := time.Since(startTime)
+	c.log.Printf("Execution time: %s\n", elapsedTime)
+	return resp, err
+}
+
 func HandleGetHttp(w io.Writer, args []string) error {
 	var output string
 	var disableRedirect bool
+	var timeout int
 	var header Header
 	var auth string
+	var report bool
 
 	fs := flag.NewFlagSet("HTTP GET Method", flag.ContinueOnError)
 	fs.SetOutput(w)
 	fs.StringVar(&output, "output", "", "Output file path")
 	fs.BoolVar(&disableRedirect, "disable-redirect", false, "Disable redirection")
+	fs.IntVar(&timeout, "timeout", 1000, "Time out, unit is ms (default=1000ms)")
 	fs.Var(&header, "header", "Header value (key=value)")
 	fs.StringVar(&auth, "basicauth", "", "Atuh value (user:password)")
+	fs.BoolVar(&report, "report", false, "Latency report (default=false)")
 
 	fs.Usage = func() {
 		var usageString = `
@@ -69,8 +88,10 @@ http get: <options> server`
 	c := getConfig{
 		output:          output,
 		disableRedirect: disableRedirect,
+		timeout:         timeout,
 		header:          header,
 		auth:            auth,
+		report:          report,
 	}
 	c.url = fs.Arg(0)
 	httpClient := createHTTPClient(c)
@@ -88,11 +109,23 @@ http get: <options> server`
 }
 
 func createHTTPClient(config getConfig) *http.Client {
+	var client *http.Client
+
 	if config.disableRedirect {
-		return &http.Client{CheckRedirect: redirectPolicyFunc}
+		client = &http.Client{
+			Timeout:       time.Duration(config.timeout) * time.Millisecond,
+			CheckRedirect: redirectPolicyFunc,
+		}
 	} else {
-		return &http.Client{}
+		client = &http.Client{}
 	}
+
+	if config.report {
+		reportTransport := ReportClient{}
+		client.Transport = &reportTransport
+	}
+
+	return client
 }
 
 func redirectPolicyFunc(req *http.Request, via []*http.Request) error {
