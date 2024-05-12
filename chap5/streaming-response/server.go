@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -51,8 +52,18 @@ func progressStreamer(logReader *io.PipeReader, w http.ResponseWriter, done chan
 	done <- struct{}{}
 }
 
+func downlaodHandler(w http.ResponseWriter, r *http.Request) {
+	f, err := os.Open("test.json")
+	w.Header().Set("Content-Type", "application/json")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+	io.Copy(w, f)
+}
+
 func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/job", longRunningProcessHandler)
+	mux.HandleFunc("/download", downlaodHandler)
 	log.Fatal(http.ListenAndServe(":8080", mux))
 }
