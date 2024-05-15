@@ -6,7 +6,7 @@ import (
 	"net"
 	"testing"
 
-	users "github.com/PaulOh5/user-service/service"
+	users "github.com/PaulOh5/user-service/service-v2"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"

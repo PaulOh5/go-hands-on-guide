@@ -2,13 +2,14 @@ package main
 
 import (
 	"context"
-	"errors"
 	"log"
 	"net"
 	"strings"
 
-	users "github.com/PaulOh5/user-service/service"
+	users "github.com/PaulOh5/user-service/service-v2"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type userService struct {
@@ -23,7 +24,7 @@ func (s *userService) GetUser(ctx context.Context, in *users.UserGetRequest) (*u
 	)
 	components := strings.Split(in.Email, "@")
 	if len(components) != 2 {
-		return nil, errors.New("invalid email address")
+		return nil, status.Error(codes.InvalidArgument, "Invalid email address specified")
 	}
 	u := users.User{
 		Id:        in.Id,
@@ -31,7 +32,7 @@ func (s *userService) GetUser(ctx context.Context, in *users.UserGetRequest) (*u
 		LastName:  components[1],
 		Age:       36,
 	}
-	return &users.UserGetReply{User: &u}, nil
+	return &users.UserGetReply{User: &u, Location: "Seoul"}, nil
 }
 
 func registerServices(s *grpc.Server) {

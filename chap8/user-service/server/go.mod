@@ -3,8 +3,8 @@ module github.com/PaulOh5/user-service/server
 go 1.22.2
 
 require (
-	github.com/PaulOh5/user-service/service v0.0.0-00010101000000-000000000000
-	google.golang.org/grpc v1.63.2
+	github.com/PaulOh5/user-service/service-v2 v0.0.0-00010101000000-000000000000
+	google.golang.org/grpc v1.64.0
 )
 
 require (
@@ -15,4 +15,4 @@ require (
 	google.golang.org/protobuf v1.34.1 // indirect
 )
 
-replace github.com/PaulOh5/user-service/service => ../service
+replace github.com/PaulOh5/user-service/service-v2 => ../service-v2
