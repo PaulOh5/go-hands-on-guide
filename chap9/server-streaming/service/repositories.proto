@@ -5,6 +5,7 @@ option go_package = "github.com/PaulOh5/server-streaming/service";
 
 service Repo {
   rpc GetRepos (RepoGetRequest) returns (stream RepoGetReply) {}
+  rpc CreateBuild (Repository) returns (stream RepoBuild) {}
 }
 
 message RepoGetRequest {
@@ -21,4 +22,9 @@ message Repository {
 
 message RepoGetReply {
   Repository repo = 1;
+}
+
+message RepoBuild {
+  string log_line = 1;
+  string timestampe = 2;
 }

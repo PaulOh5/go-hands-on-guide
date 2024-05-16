@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"strings"
+	"time"
 
 	svc "github.com/PaulOh5/server-streaming/service"
 	"google.golang.org/grpc"
@@ -62,6 +63,32 @@ func (s *repoService) GetRepos(
 		)
 		r := svc.RepoGetReply{Repo: &repo}
 		if err := stream.Send(&r); err != nil {
+			return err
+		}
+		if cnt >= 5 {
+			break
+		}
+		cnt++
+	}
+	return nil
+}
+
+func (s *repoService) CreateBuild(
+	in *svc.Repository,
+	stream svc.Repo_CreateBuildServer,
+) error {
+	log.Printf(
+		"Received request for creating repo with Id: %s Name: %s\n",
+		in.Id, in.Name,
+	)
+	cnt := 1
+	for {
+		currentTime := time.Now().Format("2006-01-02 15:04:05")
+		createLog := svc.RepoBuild{
+			LogLine:    fmt.Sprintf("Creating %s repository...(%d)", in.Name, cnt),
+			Timestampe: currentTime,
+		}
+		if err := stream.Send(&createLog); err != nil {
 			return err
 		}
 		if cnt >= 5 {

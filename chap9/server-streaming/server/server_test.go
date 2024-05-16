@@ -27,7 +27,7 @@ func startTestGrpcServer() (*grpc.Server, *bufconn.Listener) {
 	return s, l
 }
 
-func TestUserService(t *testing.T) {
+func TestGetRepoService(t *testing.T) {
 	s, l := startTestGrpcServer()
 	defer s.GracefulStop()
 
@@ -39,7 +39,7 @@ func TestUserService(t *testing.T) {
 
 	client, err := grpc.DialContext(
 		context.Background(),
-		"", grpc.WithTransportCredentials(insecure.NewCredentials()),
+		"bufnet", grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithContextDialer(bufconnDialer),
 	)
 	if err != nil {
@@ -82,6 +82,73 @@ func TestUserService(t *testing.T) {
 				"Expected Repo Name to be: %s, Got: %s",
 				expectedRepoName,
 				gotRepoName,
+			)
+		}
+	}
+}
+
+func TestCreateBuildRepoService(t *testing.T) {
+	s, l := startTestGrpcServer()
+	defer s.GracefulStop()
+
+	bufconnDialer := func(
+		ctx context.Context, addr string,
+	) (net.Conn, error) {
+		return l.Dial()
+	}
+
+	client, err := grpc.DialContext(
+		context.Background(),
+		"bufnet", grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithContextDialer(bufconnDialer),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repoClient := svc.NewRepoClient(client)
+	stream, err := repoClient.CreateBuild(
+		context.Background(),
+		&svc.Repository{
+			Id:   "reop-123",
+			Name: "repo-name",
+			Url:  "http://example.com",
+			Owner: &svc.User{
+				Id:        "user-123",
+				FirstName: "Paul",
+				LastName:  "Oh",
+				Age:       27,
+			},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var repos []*svc.RepoBuild
+	for {
+		repo, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			log.Fatal(err)
+		}
+		repos = append(repos, repo)
+	}
+
+	if len(repos) != 5 {
+		t.Fatalf("Expected to get back 5 repos, got back: %d repos", len(repos))
+	}
+
+	for idx, repo := range repos {
+		gotLogLine := repo.LogLine
+		expectedLogLine := fmt.Sprintf("Creating repo-name repository...(%d)", idx+1)
+		if gotLogLine != expectedLogLine {
+			t.Errorf(
+				"Expected LogLine to be: %s, Got: %s",
+				expectedLogLine,
+				gotLogLine,
 			)
 		}
 	}
