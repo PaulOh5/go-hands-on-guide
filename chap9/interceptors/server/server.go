@@ -20,6 +20,20 @@ type userService struct {
 	svc.UnimplementedUsersServer
 }
 
+type wrappedServerStream struct {
+	grpc.ServerStream
+}
+
+func (s wrappedServerStream) SendMsg(m interface{}) error {
+	log.Printf("Send msg called: %T", m)
+	return s.ServerStream.SendMsg(m)
+}
+
+func (s wrappedServerStream) RecvMsg(m interface{}) error {
+	log.Printf("Waiting to receive a message: %T", m)
+	return s.ServerStream.RecvMsg(m)
+}
+
 func loggingUnaryInterceptor(
 	ctx context.Context,
 	req interface{},
@@ -38,8 +52,9 @@ func loggingStreamInterceptor(
 	info *grpc.StreamServerInfo,
 	handler grpc.StreamHandler,
 ) error {
+	serverStream := wrappedServerStream{ServerStream: stream}
 	start := time.Now()
-	err := handler(srv, stream)
+	err := handler(srv, serverStream)
 	ctx := stream.Context()
 	logMessage(ctx, info.FullMethod, time.Since(start), err)
 	return err

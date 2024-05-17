@@ -16,6 +16,25 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+type wrappedClientStream struct {
+	grpc.ClientStream
+}
+
+func (s wrappedClientStream) SendMsg(m interface{}) error {
+	log.Printf("Send msg called: %T", m)
+	return s.ClientStream.SendMsg(m)
+}
+
+func (s wrappedClientStream) RecvMsg(m interface{}) error {
+	log.Printf("Recv msg called: %T", m)
+	return s.ClientStream.RecvMsg(m)
+}
+
+func (s wrappedClientStream) CloseSend() error {
+	log.Println("CloseSend() called")
+	return s.ClientStream.CloseSend()
+}
+
 func metadataUnaryInterceptor(
 	ctx context.Context,
 	method string,
@@ -51,13 +70,9 @@ func metadataStreamInterceptor(
 		"Request-Id",
 		"request-123",
 	)
-	return streamer(
-		ctxWithMetadata,
-		desc,
-		cc,
-		method,
-		opts...,
-	)
+	stream, err := streamer(ctxWithMetadata, desc, cc, method, opts...)
+	clientStream := wrappedClientStream{ClientStream: stream}
+	return clientStream, err
 }
 
 func setupGrpcConnection(addr string) (*grpc.ClientConn, error) {
