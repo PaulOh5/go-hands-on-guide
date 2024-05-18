@@ -33,6 +33,10 @@ func setupHandlers(mux *http.ServeMux, config appConfig) {
 		"/api/packages",
 		&app{config: config, handler: packageHandler},
 	)
+	mux.Handle(
+		"/api/packages/download",
+		&app{config: config, handler: packageGetHandler},
+	)
 }
 
 func getBucket(bucketName, s3Address, s3Region string) (*blob.Bucket, error) {

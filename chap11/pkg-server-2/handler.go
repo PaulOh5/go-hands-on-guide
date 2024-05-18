@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"math/rand"
 	"net/http"
 	"strconv"
@@ -92,33 +93,25 @@ func packageGetHandler(
 	r *http.Request,
 	config appConfig,
 ) {
-	queryParams := r.URL.Query()
-	owner := queryParams.Get("owner_id")
-	name := queryParams.Get("name")
-	version := queryParams.Get("version")
-	download := queryParams.Get("download")
-
-	if len(owner) == 0 || len(name) == 0 || len(version) == 0 {
-		http.Error(w, "Must specify package owner, name and version", http.StatusBadRequest)
-		return
-	}
-	ownerId, err := strconv.Atoi(owner)
+	q, err := parseQuery(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-
-	q := pkgQueryParams{
-		ownerId: ownerId,
-		version: version,
-		name:    name,
+	if q.ownerId == -1 || len(q.name) == 0 || len(q.version) == 0 {
+		http.Error(w, "Must specify package owner, name and version", http.StatusBadRequest)
+		return
 	}
+
 	pkgResults, err := queryDb(config, q)
+	log.Println(pkgResults)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 	if len(pkgResults) == 0 {
 		http.Error(w, "No package found", http.StatusNotFound)
+		return
 	}
 
 	packageID := pkgResults[0].ObjectStoreId
@@ -129,6 +122,7 @@ func packageGetHandler(
 		return
 	}
 
+	download := r.URL.Query().Get("download")
 	if download == "true" {
 		reader, err := config.packageBucket.NewReader(r.Context(), packageID, nil)
 		if err != nil {
@@ -154,6 +148,31 @@ func packageGetHandler(
 	}
 }
 
+func packageQueryHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+	config appConfig,
+) {
+	q, err := parseQuery(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	}
+
+	pkgResults, err := queryDb(config, q)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	jsonData, err := json.Marshal(pkgResults)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprint(w, string(jsonData))
+}
+
 func packageHandler(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -161,10 +180,31 @@ func packageHandler(
 ) {
 	switch r.Method {
 	case "GET":
-		packageGetHandler(w, r, config)
+		packageQueryHandler(w, r, config)
 	case "POST":
 		packageRegHandler(w, r, config)
 	default:
 		http.Error(w, "Invalid Method", http.StatusMethodNotAllowed)
 	}
+}
+
+func parseQuery(r *http.Request) (pkgQueryParams, error) {
+	queryParams := r.URL.Query()
+	owner := queryParams.Get("owner_id")
+	if len(owner) == 0 {
+		owner = "-1"
+	}
+	ownerId, err := strconv.Atoi(owner)
+	if err != nil {
+		return pkgQueryParams{}, err
+	}
+	name := queryParams.Get("name")
+	version := queryParams.Get("version")
+
+	q := pkgQueryParams{
+		ownerId: ownerId,
+		name:    name,
+		version: version,
+	}
+	return q, nil
 }

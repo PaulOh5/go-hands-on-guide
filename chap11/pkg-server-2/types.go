@@ -1,13 +1,11 @@
 package main
 
-import "io"
-
-type pkgData struct {
-	Name     string
-	Version  string
-	Filename string
-	Bytes    io.Reader
-}
+// type pkgData struct {
+// 	Name     string
+// 	Version  string
+// 	Filename string
+// 	Bytes    io.Reader
+// }
 
 type pkgRegisterResponse struct {
 	ID string `json:"id"`
@@ -20,9 +18,9 @@ type pkgQueryParams struct {
 }
 
 type pkgRow struct {
-	OwnerId       int
-	Name          string
-	Version       string
-	ObjectStoreId string
-	Created       string
+	OwnerId       int    `json:"owner_id"`
+	Name          string `json:"name"`
+	Version       string `json:"version"`
+	ObjectStoreId string `json:"object_store_id"`
+	Created       string `json:"created"`
 }

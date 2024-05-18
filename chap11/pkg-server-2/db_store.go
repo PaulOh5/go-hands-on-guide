@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -57,7 +58,7 @@ func queryDb(config appConfig, params pkgQueryParams) ([]pkgRow, error) {
 
 	args := []interface{}{}
 	conditions := []string{}
-	if params.ownerId != 0 {
+	if params.ownerId != -1 {
 		conditions = append(conditions, "owner_id=?")
 		args = append(args, params.ownerId)
 	}
@@ -66,18 +67,22 @@ func queryDb(config appConfig, params pkgQueryParams) ([]pkgRow, error) {
 		args = append(args, params.name)
 	}
 	if len(params.version) != 0 {
+		if len(conditions) == 0 {
+			return nil, errors.New("quering by only version is not allowed")
+		}
 		conditions = append(conditions, "version=?")
 		args = append(args, params.version)
 	}
 
+	var query string
 	if len(conditions) == 0 {
-		return nil, fmt.Errorf("no query conditions found")
+		query = "SELECT * FROM packages"
+	} else {
+		query = fmt.Sprintf(
+			"SELECT * FROM packages WHERE %s",
+			strings.Join(conditions, " AND "),
+		)
 	}
-
-	query := fmt.Sprintf(
-		"SELECT * FROM packages WHERE %s",
-		strings.Join(conditions, " AND "),
-	)
 
 	rows, err := conn.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -95,6 +100,7 @@ func queryDb(config appConfig, params pkgQueryParams) ([]pkgRow, error) {
 		); err != nil {
 			return nil, err
 		}
+		pkgResults = append(pkgResults, pkg)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
